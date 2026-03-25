@@ -1,0 +1,17 @@
+{
+  "name": "reality-check-ai-backend",
+  "version": "1.0.0",
+  "description": "Reality Check AI - Self-Sabotage Predictor Backend",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "openai": "^4.67.1"
+  }
+}
