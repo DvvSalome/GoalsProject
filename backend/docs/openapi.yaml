@@ -1,0 +1,675 @@
+openapi: 3.0.3
+info:
+  title: Reality Check AI API
+  description: |
+    Backend HTTP API for behavioral prediction, Supabase-backed users, goals, and goal history.
+    Authenticated routes expect `Authorization: Bearer <access_token>` where the token comes from
+    Supabase Auth (`/api/auth/register` or `/api/auth/login`).
+
+    Base URL example: `http://localhost:3001`
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Predict (public)
+  - name: Auth
+  - name: Goals
+  - name: Goal history
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Service health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  hasApiKey:
+                    type: boolean
+                    description: Whether OpenAI is configured for `/api/predict`
+                  supabase:
+                    type: boolean
+                    description: Whether Supabase URL and anon key are set (auth/goals enabled)
+
+  /api/predict:
+    post:
+      tags: [Predict (public)]
+      summary: Run OpenAI prediction (no auth)
+      description: Requires a valid `OPENAI_API_KEY` on the server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionInput"
+      responses:
+        "200":
+          description: Prediction result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  prediction:
+                    $ref: "#/components/schemas/PredictionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/predict-demo:
+    post:
+      tags: [Predict (public)]
+      summary: Heuristic demo prediction (no auth, no OpenAI)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionInput"
+      responses:
+        "200":
+          description: Prediction result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  prediction:
+                    $ref: "#/components/schemas/PredictionResult"
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register with email and password (Supabase Auth)
+      description: |
+        Returns `session` when the project allows immediate sign-in. If email confirmation is required,
+        `session` may be null until the user verifies email (per Supabase project settings).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRegisterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthLoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user and profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    description: Supabase User object
+                  profile:
+                    $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/goals:
+    get:
+      tags: [Goals]
+      summary: List goals for the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Goals ordered by `createdAt` descending
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  goals:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Goal"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+    post:
+      tags: [Goals]
+      summary: Create a goal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoalCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  goal:
+                    $ref: "#/components/schemas/Goal"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/goals/{goalId}:
+    parameters:
+      - $ref: "#/components/parameters/goalId"
+    get:
+      tags: [Goals]
+      summary: Get one goal
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  goal:
+                    $ref: "#/components/schemas/Goal"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+    patch:
+      tags: [Goals]
+      summary: Partial update of a goal
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoalPatch"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  goal:
+                    $ref: "#/components/schemas/Goal"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+    delete:
+      tags: [Goals]
+      summary: Delete a goal (cascades goal history)
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/goals/{goalId}/history:
+    parameters:
+      - $ref: "#/components/parameters/goalId"
+    get:
+      tags: [Goal history]
+      summary: List history entries for a goal
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GoalHistoryEntry"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/goals/{goalId}/notes:
+    parameters:
+      - $ref: "#/components/parameters/goalId"
+    post:
+      tags: [Goal history]
+      summary: Append a manual note to goal history
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry:
+                    $ref: "#/components/schemas/GoalHistoryEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+  /api/goals/{goalId}/predict:
+    parameters:
+      - $ref: "#/components/parameters/goalId"
+    post:
+      tags: [Goal history]
+      summary: Run prediction for this goal and persist to history
+      description: |
+        Loads the goal from the database, merges optional body fields as overrides (same shape as
+        `PredictionInput`), runs OpenAI when configured else demo heuristics, then inserts a
+        `prediction` history row with `input_snapshot` and `prediction` JSON.
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: Optional overrides for any prediction input fields
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictionInputPartial"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  prediction:
+                    $ref: "#/components/schemas/PredictionResult"
+                  source:
+                    type: string
+                    enum: [openai, demo]
+                  historyEntry:
+                    $ref: "#/components/schemas/GoalHistoryEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/SupabaseNotConfigured"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    goalId:
+      name: goalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    Unauthorized:
+      description: Missing or invalid Bearer token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    ServerError:
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    SupabaseNotConfigured:
+      description: SUPABASE_URL / SUPABASE_ANON_KEY not set on server
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: string
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AuthRegisterResponse:
+      type: object
+      properties:
+        user:
+          type: object
+        session:
+          nullable: true
+          type: object
+
+    AuthLoginResponse:
+      type: object
+      properties:
+        user:
+          type: object
+        session:
+          type: object
+
+    PredictionInput:
+      type: object
+      required:
+        - goal
+        - hours
+        - energy
+        - mood
+        - distractions
+        - consistency
+        - recentSchedule
+        - recentFollowThrough
+      properties:
+        goal:
+          type: string
+        hours:
+          type: number
+          minimum: 0.5
+          maximum: 16
+        energy:
+          type: integer
+          minimum: 1
+          maximum: 10
+        mood:
+          type: string
+          enum: [good, neutral, bad]
+        distractions:
+          type: boolean
+        consistency:
+          type: string
+          enum: [high, medium, low]
+        recentSchedule:
+          type: string
+          enum: [stable, unstable, chaotic]
+        recentFollowThrough:
+          type: string
+          enum: [strong, partial, little, none]
+        recentHistory:
+          type: string
+          description: Free-text context for the last few days (optional but recommended)
+
+    PredictionInputPartial:
+      type: object
+      description: All fields optional; omitted fields are taken from the stored goal row.
+      properties:
+        goal:
+          type: string
+        hours:
+          type: number
+        energy:
+          type: integer
+        mood:
+          type: string
+          enum: [good, neutral, bad]
+        distractions:
+          type: boolean
+        consistency:
+          type: string
+          enum: [high, medium, low]
+        recentSchedule:
+          type: string
+          enum: [stable, unstable, chaotic]
+        recentFollowThrough:
+          type: string
+          enum: [strong, partial, little, none]
+        recentHistory:
+          type: string
+
+    PredictionResult:
+      type: object
+      properties:
+        failure_probability:
+          type: number
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        main_reason:
+          type: string
+        critical_point:
+          type: string
+        intervention:
+          type: string
+        tone_message:
+          type: string
+        impostor_detected:
+          type: boolean
+        impostor_message:
+          type: string
+          nullable: true
+
+    GoalCreate:
+      allOf:
+        - $ref: "#/components/schemas/PredictionInput"
+
+    GoalPatch:
+      type: object
+      description: Partial update; include only fields to change
+      properties:
+        goal:
+          type: string
+        hours:
+          type: number
+        energy:
+          type: integer
+        mood:
+          type: string
+          enum: [good, neutral, bad]
+        distractions:
+          type: boolean
+        consistency:
+          type: string
+          enum: [high, medium, low]
+        recentSchedule:
+          type: string
+          enum: [stable, unstable, chaotic]
+        recentFollowThrough:
+          type: string
+          enum: [strong, partial, little, none]
+        recentHistory:
+          type: string
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        goal:
+          type: string
+        hours:
+          type: number
+        energy:
+          type: integer
+        mood:
+          type: string
+        distractions:
+          type: boolean
+        consistency:
+          type: string
+        recentSchedule:
+          type: string
+        recentFollowThrough:
+          type: string
+        recentHistory:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GoalHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        goalId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          enum: [prediction, note]
+        source:
+          type: string
+          nullable: true
+          description: Present for predictions (openai or demo); null for notes
+        inputSnapshot:
+          type: object
+          additionalProperties: true
+        prediction:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
