@@ -12,6 +12,13 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (_req, res) => {
+  res.json({
+    name: "Reality Check AI API",
+    health: "/api/health",
+  });
+});
+
 app.post("/api/predict", postPredict);
 app.post("/api/predict-demo", postPredictDemo);
 app.get("/api/health", getHealth);
