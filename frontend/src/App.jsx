@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Brain, Zap, AlertTriangle, Ghost } from "lucide-react";
+import { Zap, AlertTriangle } from "lucide-react";
 import InputForm from "./components/InputForm";
 import ResultCard from "./components/ResultCard";
 import LoadingAnimation from "./components/LoadingAnimation";
@@ -12,6 +12,20 @@ const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
 function apiUrl(path) {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${API_ORIGIN}${p}`;
+}
+
+/** Avoid WebKit's "The string did not match the expected pattern" when the body is HTML (e.g. Vercel 404 on /api). */
+async function readJsonBody(res) {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) return {};
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    throw new Error(
+      "The API returned a non-JSON response (often HTML). If the site is on Vercel, set VITE_API_ORIGIN to your backend base URL (no trailing slash) in Project → Environment Variables and redeploy."
+    );
+  }
 }
 
 const DEMO_SCENARIO = {
@@ -47,9 +61,17 @@ export default function App() {
 
   useEffect(() => {
     fetch(apiUrl("/api/health"))
-      .then((r) => r.json())
-      .then((data) => {
-        setUseAI(data.hasApiKey);
+      .then(async (r) => {
+        try {
+          const data = await readJsonBody(r);
+          if (r.ok && typeof data.hasApiKey === "boolean") {
+            setUseAI(data.hasApiKey);
+          } else {
+            setUseAI(false);
+          }
+        } catch {
+          setUseAI(false);
+        }
       })
       .catch(() => setUseAI(false));
   }, []);
@@ -69,7 +91,7 @@ export default function App() {
         body: JSON.stringify(payload),
       });
 
-      const result = await res.json();
+      const result = await readJsonBody(res);
 
       if (!res.ok) {
         if (useAI) {
@@ -78,7 +100,7 @@ export default function App() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
-          const fallbackResult = await fallbackRes.json();
+          const fallbackResult = await readJsonBody(fallbackRes);
           if (fallbackResult.success) {
             setPrediction(fallbackResult.prediction);
             setHistory((prev) => [
