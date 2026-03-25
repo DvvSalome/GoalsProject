@@ -7,6 +7,13 @@ import HistoryTracker from "./components/HistoryTracker";
 import DisciplineChart from "./components/DisciplineChart";
 import Header from "./components/Header";
 
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN || "").replace(/\/$/, "");
+
+function apiUrl(path) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${API_ORIGIN}${p}`;
+}
+
 const DEMO_SCENARIO = {
   goal: "Study 5 hours today",
   hours: 5,
@@ -39,7 +46,7 @@ export default function App() {
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
-    fetch("/api/health")
+    fetch(apiUrl("/api/health"))
       .then((r) => r.json())
       .then((data) => {
         setUseAI(data.hasApiKey);
@@ -55,7 +62,7 @@ export default function App() {
     const payload = data || formData;
 
     try {
-      const endpoint = useAI ? "/api/predict" : "/api/predict-demo";
+      const endpoint = apiUrl(useAI ? "/api/predict" : "/api/predict-demo");
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,7 +73,7 @@ export default function App() {
 
       if (!res.ok) {
         if (useAI) {
-          const fallbackRes = await fetch("/api/predict-demo", {
+          const fallbackRes = await fetch(apiUrl("/api/predict-demo"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
